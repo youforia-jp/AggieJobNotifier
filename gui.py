@@ -364,17 +364,28 @@ class App(ctk.CTk):
             if sys.platform == "win32":
                 creation_flags = subprocess.CREATE_NO_WINDOW
 
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True, text=True, timeout=300,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
                 creationflags=creation_flags
             )
-            if result.returncode == 0:
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                clean_line = line.strip()
+                if clean_line:
+                    self._main.log.info(clean_line)
+
+            process.wait()
+            if process.returncode == 0:
                 self.log_box.after(0, self._set_status, "Status: Ready — click ▶ Start to begin.")
                 self._main.log.info("Playwright browser check complete.")
             else:
                 self._main.log.warning(
-                    "Playwright install returned non-zero: %s", result.stderr.strip()
+                    "Playwright install returned non-zero code: %d", process.returncode
                 )
         except Exception as exc:
             self._main.log.warning("Could not auto-install Playwright: %s", exc)
