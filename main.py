@@ -84,12 +84,12 @@ HEADLESS: bool = True
 LOCATION_FILTER: list[str] = []
 FUZZY_THRESHOLD: int = 80
 MY_ACADEMIC_LEVEL: str = "all"
-RUN_INTERVAL_SECS: int = 3600
+RUN_INTERVAL_MINS: int = 60
 
 def reload_config() -> None:
     """Reload configuration from .env and config.py (called by GUI when starting)."""
     global TAMU_USERNAME, TAMU_PASSWORD, DISCORD_WEBHOOK_URL, MAX_PAGES, HEADLESS
-    global LOCATION_FILTER, FUZZY_THRESHOLD, MY_ACADEMIC_LEVEL, RUN_INTERVAL_SECS
+    global LOCATION_FILTER, FUZZY_THRESHOLD, MY_ACADEMIC_LEVEL, RUN_INTERVAL_MINS
     
     import importlib
     importlib.reload(config)
@@ -115,7 +115,7 @@ def reload_config() -> None:
 
     FUZZY_THRESHOLD = int(os.getenv("FUZZY_THRESHOLD", str(getattr(config, "FUZZY_THRESHOLD", 80))))
     MY_ACADEMIC_LEVEL = os.getenv("MY_ACADEMIC_LEVEL", getattr(config, "MY_ACADEMIC_LEVEL", "all")).lower().strip()
-    RUN_INTERVAL_SECS = int(os.getenv("RUN_INTERVAL_SECS", str(getattr(config, "RUN_INTERVAL_SECS", 3600))))
+    RUN_INTERVAL_MINS = int(os.getenv("RUN_INTERVAL_MINS", str(getattr(config, "RUN_INTERVAL_MINS", 60))))
 
     # Load advanced search API filters from .env
     env_filters = {
@@ -273,6 +273,30 @@ def send_discord_notification(jobs: list[dict[str, Any]]) -> None:
             time.sleep(2)
         except requests.RequestException as exc:
             log.error("Failed to send Discord notification: %s", exc)
+
+
+def send_discord_info(message: str) -> None:
+    """Send a simple info/status notice to Discord."""
+    if not DISCORD_WEBHOOK_URL:
+        return
+    payload = {
+        "username": "Aggie Job Bot 🤖",
+        "avatar_url": "https://brand.tamu.edu/logos/university-logos/png/primary/primary-aggie.png",
+        "embeds": [
+            {
+                "title": "✅ Bot Status",
+                "description": message,
+                "color": 0x500000, # TAMU Maroon color
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
+    }
+    try:
+        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=15)
+        resp.raise_for_status()
+        log.info("Discord status info sent.")
+    except requests.RequestException as exc:
+        log.error("Failed to send Discord info message: %s", exc)
 
 
 def send_discord_error(message: str) -> None:
@@ -1039,7 +1063,7 @@ class SessionExpiredError(Exception):
 # Main pipeline
 # ===========================================================================
 
-def _execute_pipeline(state: StateManager, keywords: list[str], force_login: bool, debug: bool) -> None:
+def _execute_pipeline(state: StateManager, keywords: list[str], force_login: bool, debug: bool, is_first_run: bool = False) -> None:
     """Run a single execution loop of the scraper pipeline."""
     with sync_playwright() as playwright:
         browser: Browser | None = None
@@ -1141,10 +1165,19 @@ def _execute_pipeline(state: StateManager, keywords: list[str], force_login: boo
 
     log.info("%d new job(s) to notify about.", len(new_jobs))
 
-    if new_jobs:
-        send_discord_notification(new_jobs)
+    if is_first_run:
+        # On the first run, we treat all currently matching jobs as "old jobs"
+        # and seed the seen list, but we do NOT send them to Discord.
+        # Instead, we send a startup confirmation message.
+        log.info("First run: Seeded %d jobs as 'old jobs'. Sending startup message to Discord.", len(new_jobs))
+        send_discord_info(
+            f"the script is working! you will be notified if any new jobs are published in {RUN_INTERVAL_MINS} minutes"
+        )
     else:
-        log.info("No new matching jobs found — nothing sent to Discord.")
+        if new_jobs:
+            send_discord_notification(new_jobs)
+        else:
+            log.info("No new matching jobs found — nothing sent to Discord.")
 
     state.save()
     log.info("Pipeline complete.")
@@ -1156,26 +1189,26 @@ def run(force_login: bool = False, no_filter: bool = False, debug: bool = False,
     keywords = [] if no_filter else config.KEYWORDS
 
     if not continuous:
-        _execute_pipeline(state, keywords, force_login=force_login, debug=debug)
+        _execute_pipeline(state, keywords, force_login=force_login, debug=debug, is_first_run=False)
         return
 
-    log.info("Starting continuous daemon mode (running every %d seconds)...", RUN_INTERVAL_SECS)
+    log.info("Starting continuous daemon mode (running every %d minutes)...", RUN_INTERVAL_MINS)
     first_run = True
     while not stop_event.is_set():
         reload_config()  # refresh config dynamically inside loop
         try:
             loop_force_login = force_login if first_run else False
-            first_run = False
             
-            _execute_pipeline(state, keywords, loop_force_login, debug)
+            _execute_pipeline(state, keywords, loop_force_login, debug, is_first_run=first_run)
+            first_run = False
         except Exception as exc:
             log.error("Unhandled error in pipeline loop: %s", exc)
             send_discord_error(f"Continuous mode pipeline execution failed: {exc}")
             
-        log.info("Sleeping for %d seconds before next check...", RUN_INTERVAL_SECS)
+        log.info("Sleeping for %d minutes before next check...", RUN_INTERVAL_MINS)
         
         # Use event wait instead of sleep so the GUI can interrupt it
-        if stop_event.wait(RUN_INTERVAL_SECS):
+        if stop_event.wait(RUN_INTERVAL_MINS * 60):
             log.info("Stop event received, terminating continuous loop.")
             break
 

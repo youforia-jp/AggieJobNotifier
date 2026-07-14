@@ -158,7 +158,7 @@ class App(ctk.CTk):
 
         # ---- Scraper Settings ----
         self._section("🤖  Scraper Settings")
-        self.interval_entry  = self._entry("Run Interval (seconds)", "RUN_INTERVAL_SECS", default="3600")
+        self.interval_entry  = self._entry("Run Interval (minutes)", "RUN_INTERVAL_MINS", default="60")
         self.keywords_entry  = self._entry(
             "Title Keywords (comma-separated)", "KEYWORDS",
             default="Developer,Software,IT Support,Grader,Research,Data,Engineer,Analyst,Tutor,Assistant,Intern"
@@ -390,7 +390,7 @@ class App(ctk.CTk):
         _s("KEYWORDS",         self.keywords_entry.get())
         _s("LOCATION_FILTER",  self.location_entry.get())
         _s("MY_ACADEMIC_LEVEL", self.academic_menu.get().lower())
-        _s("RUN_INTERVAL_SECS", self.interval_entry.get())
+        _s("RUN_INTERVAL_MINS", self.interval_entry.get())
         _s("FILTER_SCHOOL",    SCHOOL_OPTIONS[self.school_menu.get()])
         _s("FILTER_POSTDATE",  POSTDATE_OPTIONS[self.postdate_menu.get()])
 

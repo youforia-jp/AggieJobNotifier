@@ -45,11 +45,11 @@ LOCATION_FILTER: list[str] = []
 MY_ACADEMIC_LEVEL = "undergraduate"
 
 # ---------------------------------------------------------------------------
-# Daemon / Loop interval (in seconds)
+# Daemon / Loop interval (in minutes)
 # ---------------------------------------------------------------------------
 # Used when running the scraper continuously with the --continuous flag.
-# Default: 3600 seconds (1 hour). Recommended: 1800 (30 mins) to 7200 (2 hours).
-RUN_INTERVAL_SECS = 3600
+# Default: 60 minutes (1 hour). Recommended: 30 mins to 120 mins (2 hours).
+RUN_INTERVAL_MINS = 60
 
 # ---------------------------------------------------------------------------
 # Symplicity API Search Filters (server-side filtering)
