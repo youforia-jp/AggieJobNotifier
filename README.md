@@ -8,243 +8,49 @@
 > **📣 COMING SOON: PUBLIC DISCORD SERVER & BOT**
 > I will be launching a public Discord server featuring a shared bot that broadcasts job updates directly. Once it goes live, you will not need to run this code or keep your computer on at all! Updates will be sent to major/level specific channels automatically. Stay tuned!
 
-A production-ready Python scraper that monitors the **Texas A&M Symplicity Job Board** and sends Discord alerts whenever a new job matching your keywords is posted.
+A standalone, zero-code Windows desktop application that monitors the **Texas A&M Symplicity Job Board** and sends Discord alerts whenever a new job matching your keywords is posted.
 
 ---
 
-## How it works
+## Quick Start (No Code Required)
 
-```
-Playwright (Chromium) → TAMU SSO Login (once)
-    → Navigate Jobs SPA
-        → Intercept Internal JSON API  ──► fallback: DOM parsing
-            → Keyword Filter
-                → Compare with jobs_state.json
-                    → Send Discord Embed for new jobs
-                        → Save updated state
-```
+### 1 — Download the Project
+1. Download this project as a ZIP file (click the green **Code** button at the top right, then **Download ZIP**).
+2. Extract the ZIP file to a folder on your computer (e.g., your Desktop).
 
----
+### 2 — Open the Application
+Double-click **[AggieJobNotifier.exe](file:///c:/Users/juanp/Desktop/JobsforAggiesNotifier/AggieJobNotifier.exe)** in the folder. A dark-mode desktop window will open.
 
-## Prerequisites
+### 3 — Fill in your Settings
+Configure the settings in the left panel of the application window:
+* **TAMU NetID**: Your full TAMU email address (e.g., `netid@tamu.edu`).
+* **TAMU Password**: Your TAMU login password.
+* **Discord Webhook URL**: The webhook URL of the Discord channel where you want to receive alerts (configured in Discord via *Channel Settings → Integrations → Webhooks*).
+* **Run Interval (minutes)**: How often the bot checks for new jobs (default: `60` minutes).
+* **Title Keywords**: Comma-separated list of roles you want to search for (e.g., `Developer, Software, IT Support, Assistant`). Leave empty to get notified for **all** matching jobs.
+* **Fuzzy Matching & Advanced Filters**: Check any checkboxes for remote/onsite, job types, campus location, or work authorization limits to filter results.
 
-| Requirement | Version |
-|---|---|
-| Python | 3.10 + |
-| pip | latest |
-| A TAMU NetID | — |
-| A Discord Server (with a webhook) | — |
+### 4 — Start the Scraper
+Click the **▶ Start** button. 
 
----
-
-## Quick Start
-
-### 1 — Clone / download the project
-
-```bash
-cd ~/JobsforAggiesNotifier
-```
-
-### 2 — Create a virtual environment
-
-```bash
-# Windows
-python -m venv .venv
-.venv\Scripts\activate
-
-# macOS / Linux
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3 — Install Python dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4 — Install Playwright's Chromium browser
-
-```bash
-playwright install chromium
-```
-
-### 5 — Configure your environment
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and fill in:
-
-| Variable | Description |
-|---|---|
-| `TAMU_USERNAME` | Your full TAMU email, e.g. `juan@tamu.edu` |
-| `TAMU_PASSWORD` | Your TAMU password |
-| `DISCORD_WEBHOOK_URL` | Webhook URL from Discord server settings |
-| `MAX_PAGES` | How many pages of results to scrape (default `3`) |
-| `HEADLESS` | `true` for background runs; `false` to see the browser |
-
-### 6 — Customise your keyword filters
-
-Edit `config.py` → `KEYWORDS` list.  Any job whose title contains one of these strings (case-insensitive) will trigger a notification.
-
-```python
-KEYWORDS = [
-    "Developer",
-    "IT Support",
-    "Grader",
-    "Research",
-    # add your own …
-]
-```
-
-Set `KEYWORDS = []` to receive **all** job postings without filtering.
-
-### 7 — Configure Advanced Website Filters & Fuzzy Matching
-
-You can apply advanced search filters (e.g. Remote vs On-site, Job Type, Work Study requirement, etc.) directly at the server level by editing `config.py`.
-
-Open `config.py` and populate the lists in the `FILTERS` dictionary with the desired options documented in the comments. For example:
-
-```python
-FILTERS = {
-    "symp_remote_onsite": ["remote", "hybrid"],  # Only show Remote & Hybrid roles
-    "job_type": ["5"],                            # Only show Internships
-    "tamu_job_location": ["1"],                   # Only show On-Campus jobs
-}
-```
-
-#### Fuzzy Matching & Location Filter
-* **Fuzzy Matching (`rapidfuzz`)**: The scraper uses fuzzy partial-ratio matching to evaluate keyword matches in job titles. You can adjust `FUZZY_THRESHOLD=80` in `.env` (default is `80`; higher is stricter).
-* **Location Filtering**: Add a comma-separated list to `LOCATION_FILTER` in `.env` (e.g. `LOCATION_FILTER=College Station, Remote`) to filter scraped listings by location.
-
+* **First-time Login (Duo 2FA)**: On your very first run, the application will open a **visible browser window**. Watch the browser, enter your NetID/password if prompted, and **approve the Duo push on your phone**.
+* Once approved, the bot saves a secure login session (`session_state.json`) and restarts in **headless (hidden) mode**. From this point forward, you won't need to approve Duo again unless the session expires (usually once a week).
 
 ---
 
-## First-time Authentication (IMPORTANT)
+## How the Scraper Behaves
 
-The TAMU SSO uses **Duo 2-Factor Authentication**.  You must complete this once interactively.
-
-```bash
-python main.py --login
-```
-
-This will:
-1. Open a **visible** Chromium window.
-2. Fill in your NetID and password automatically.
-3. Pause and print a message like:
-
-```
-╔══════════════════════════════════════════════════════════╗
-║  DUO 2FA REQUIRED — approve the push on your phone now  ║
-║  Waiting up to 90 seconds …                             ║
-╚══════════════════════════════════════════════════════════╝
-```
-
-4. After you approve the push in the Duo app, it saves your session to **`session_state.json`**.
-5. All future **headless** runs reuse this session — no password prompt, no Duo.
-
-> **⚠️ Keep `session_state.json` private.**  
-> It contains your authenticated cookies.  Add it to `.gitignore`.
+* **Startup Confirmation**: When you start the scraper, it immediately fetches all jobs currently on the board, remembers them as "old jobs" (seeding them so they **do not** spam your Discord channel), and sends a confirmation message to Discord:
+  > **Bot Status: the script is working! you will be notified if any new jobs are published in X minutes.**
+* **Real-time Notifications**: Every X minutes, the bot re-checks the job board. If a newly published job matches your filters, it is sent to your Discord channel as a premium styled embed.
 
 ---
 
-## Normal headless run
-
-```bash
-python main.py
-```
-
-Flags:
-
-| Flag | Description |
-|---|---|
-| `--login` | Force a fresh interactive login (deletes old session) |
-| `--no-filter` | Bypass keyword filtering — notify on ALL new jobs |
-
----
-
-## Session expiry
-
-Symplicity sessions typically last **a few days to a week**.  
-When the session expires, the script detects the CAS redirect and automatically:
-1. Deletes the stale `session_state.json`.
-2. Re-launches a headed browser and prompts for Duo.
-3. Saves the fresh session and continues the run.
-
-You can also force a refresh manually:
-
-```bash
-python main.py --login
-```
-
----
-
-## Scheduling — run it daily automatically
-
-### Windows — Task Scheduler
-
-1. Open **Task Scheduler** → *Create Basic Task*.
-2. Set the trigger to **Daily** at your preferred time.
-3. For the Action, choose **Start a Program**:
-   - Program: `C:\path\to\JobsforAggiesNotifier\.venv\Scripts\python.exe`
-   - Arguments: `main.py`
-   - Start in: `C:\path\to\JobsforAggiesNotifier`
-4. Check *Run whether user is logged on or not* and *Run with highest privileges*.
-
-### macOS / Linux — cron
-
-Open your crontab:
-
-```bash
-crontab -e
-```
-
-Add a line to run at 8:00 AM every day:
-
-```cron
-0 8 * * * /home/youruser/JobsforAggiesNotifier/.venv/bin/python /home/youruser/JobsforAggiesNotifier/main.py >> /home/youruser/JobsforAggiesNotifier/cron.log 2>&1
-```
-
-> **Tip**: If Duo triggers during an automated run (session expired), the script will hang because there is no display.  
-> To avoid this, run `python main.py --login` manually to refresh the session before the scheduled window.
-
----
-
-## File reference
-
-| File | Purpose |
-|---|---|
-| `main.py` | Core Playwright automation, filtering, Discord notifications |
-| `config.py` | Keywords, URLs, timeouts — edit here |
-| `.env` | Secrets (never commit this) |
-| `.env.example` | Template for `.env` |
-| `requirements.txt` | Python package dependencies |
-| `jobs_state.json` | Auto-generated; tracks seen job IDs |
-| `session_state.json` | Auto-generated; saved browser session (keep private) |
-| `notifier.log` | Auto-generated; rolling log file |
-
----
-
-## Discord embed preview
-
-Each new matching job will appear in your Discord channel like this:
-
-```
-🤖 Aggie Job Bot
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Software Developer Intern
-  ─────────────────────────────
-  🏢 Employer    │ 📍 Location    │ 💵 Pay
-  Acme Corp      │ College Station│ $18/hr
-  ─────────────────────────────
-  📋 Type: Full-time Internship
-  📅 Posted: 2026-07-13
-  [Click title to open application]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Jobs for Aggies • Texas A&M University
-```
+## 📅 Run Automatically on Computer Startup
+To make the notifier run automatically every time you turn on your computer:
+1. Press `Win + R`, type `shell:startup`, and press Enter. This opens your Windows **Startup** folder.
+2. Right-click [AggieJobNotifier.exe](file:///c:/Users/juanp/Desktop/JobsforAggiesNotifier/AggieJobNotifier.exe), select **Create shortcut**, and drag that shortcut into the Startup folder.
+3. The notifier will now launch automatically in the background whenever you log in to Windows!
 
 ---
 
@@ -252,23 +58,39 @@ Each new matching job will appear in your Discord channel like this:
 
 | Symptom | Fix |
 |---|---|
-| `TAMU_USERNAME and TAMU_PASSWORD must be set` | Your `.env` file is missing or not loaded |
-| Script hangs at Duo | Duo wasn't approved within 90 s — re-run `--login` |
-| 0 jobs scraped (API) and 0 (DOM) | Symplicity updated its markup; open an issue with a screenshot of the page |
-| Discord message not sent | Check `DISCORD_WEBHOOK_URL` is correct and the webhook still exists |
-| `SessionExpiredError` loop | Delete `session_state.json` and run `--login` again |
+| Playwright browser error on startup | The application downloads Chromium automatically on first run. If it fails, check your internet connection and restart the app. |
+| Discord message not sent | Double-check that your Discord Webhook URL is entered correctly and that the channel hasn't deleted the webhook integration. |
+| Script hangs at Duo | If you don't approve the Duo push on your phone within 90 seconds, the login will time out. Stop the scraper and click **Force Login** to try again. |
 
 ---
 
-## Security notes
+<details>
+<summary>💻 For Developers / Advanced Configuration</summary>
 
-- `.env` and `session_state.json` should **never** be committed to git.  
-  Add both to `.gitignore`:
-  ```
-  .env
-  session_state.json
-  ```
-- The notifier only reads the job board — it does not submit applications.
+### Running from Source IDE
+
+If you want to run or modify the Python source code directly:
+
+1. **Setup Environment**:
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -r requirements.txt
+   playwright install chromium
+   ```
+2. **Configure Settings**:
+   Copy `.env.example` to `.env` and edit settings, or use the centralized configurations in `config.py`.
+3. **Execution**:
+   * GUI application: `python gui.py`
+   * Scraper pipeline (single headless check): `python main.py`
+   * CLI continuous mode: `python main.py --continuous`
+   * Run pre-flight check: `python check_setup.py`
+4. **Packaging the EXE**:
+   Rebuild the standalone package using PyInstaller:
+   ```bash
+   pyinstaller --noconfirm AggieJobNotifier.spec
+   ```
+</details>
 
 ---
 

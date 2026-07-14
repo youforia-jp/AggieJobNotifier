@@ -11,8 +11,9 @@ notifier.log
 # Compiled Binaries & Assets
 dist/
 build/
-*.exe
 *.ico
+*.exe
+!AggieJobNotifier.exe
 
 # Python
 __pycache__/
