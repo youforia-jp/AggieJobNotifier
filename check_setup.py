@@ -10,6 +10,12 @@ import os
 import sys
 from pathlib import Path
 
+# Force Playwright to use a persistent user AppData directory rather than the temp folder
+if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+    _local_appdata = os.environ.get("LOCALAPPDATA")
+    if _local_appdata:
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(_local_appdata, "ms-playwright")
+
 # Fix console encoding on Windows to prevent UnicodeEncodeError
 if sys.platform.startswith("win"):
     import codecs

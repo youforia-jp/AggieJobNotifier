@@ -15,6 +15,12 @@ import logging
 import customtkinter as ctk
 from dotenv import load_dotenv, set_key
 
+# Force Playwright to use a persistent user AppData directory rather than the temp folder
+if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+    _local_appdata = os.environ.get("LOCALAPPDATA")
+    if _local_appdata:
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(_local_appdata, "ms-playwright")
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -87,6 +93,18 @@ class App(ctk.CTk):
         self.title("Aggie Job Notifier")
         self.geometry("1000x720")
         self.minsize(850, 600)
+
+        # Set window / taskbar icon
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+        else:
+            icon_path = os.path.join(_base_dir, "icon.ico")
+
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")

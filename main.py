@@ -36,6 +36,13 @@ from urllib.parse import urlencode, urljoin, quote
 
 import requests
 from dotenv import load_dotenv
+
+# Force Playwright to use a persistent user AppData directory rather than the temp folder
+if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+    _local_appdata = os.environ.get("LOCALAPPDATA")
+    if _local_appdata:
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(_local_appdata, "ms-playwright")
+
 from playwright.sync_api import (
     Browser,
     BrowserContext,
