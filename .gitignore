@@ -1,0 +1,31 @@
+# Secrets — never commit these
+.env
+session_state.json
+
+# Runtime outputs
+jobs_state.json
+notifier.log
+*.log
+*.png
+
+# Compiled Binaries & Assets
+dist/
+build/
+*.exe
+*.ico
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
