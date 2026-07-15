@@ -1,4 +1,4 @@
-# 🐾 Aggie Job Notifier
+#  Aggie Job Notifier
 
 An autonomous, cloud-native background pipeline linking Symplicity job board telemetry directly to isolated Discord streaming environments. Designed for Texas A&M students to scrape and filter job listings, bypass Duo MFA seamlessly on headless instances, and broadcast real-time embeds to target channels.
 
