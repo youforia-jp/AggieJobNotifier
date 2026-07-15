@@ -398,7 +398,7 @@ class App(ctk.CTk):
     # ------------------------------------------------------------------
     def _check_for_updates(self):
         """Check for updates on GitHub and prompt the user to install if found."""
-        current_version = "1.0.0"
+        current_version = "1.2.0"
         version_url = "https://raw.githubusercontent.com/youforia-jp/AggieJobNotifier/main/version.json"
         exe_url = "https://github.com/youforia-jp/AggieJobNotifier/raw/main/AggieJobNotifier.exe"
         
@@ -407,7 +407,7 @@ class App(ctk.CTk):
             response = requests.get(version_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                remote_version = data.get("version", "1.0.0")
+                remote_version = data.get("version", "1.2.0")
                 release_notes = data.get("release_notes", "")
                 
                 # Simple version tuple comparison
@@ -428,15 +428,9 @@ class App(ctk.CTk):
                         # Download the new exe
                         exe_response = requests.get(exe_url, stream=True, timeout=30)
                         if exe_response.status_code == 200:
-                            # Write to a temporary filename next to the current exe
-                            if getattr(sys, "frozen", False):
-                                app_dir = os.path.dirname(sys.executable)
-                                current_exe_name = os.path.basename(sys.executable)
-                            else:
-                                app_dir = _base_dir
-                                current_exe_name = "AggieJobNotifier.exe"
-                                
-                            new_exe_path = os.path.join(app_dir, "AggieJobNotifier_new.exe")
+                            import tempfile
+                            # Write to the system temp directory so the user doesn't see a temporary exe
+                            new_exe_path = os.path.join(tempfile.gettempdir(), "AggieJobNotifier_new.exe")
                             with open(new_exe_path, "wb") as f:
                                 for chunk in exe_response.iter_content(chunk_size=8192):
                                     f.write(chunk)
@@ -445,13 +439,27 @@ class App(ctk.CTk):
                             
                             # If running as built exe, trigger the batch-file replacement handoff
                             if getattr(sys, "frozen", False):
+                                app_dir = os.path.dirname(sys.executable)
+                                current_exe_name = os.path.basename(sys.executable)
+                                current_exe_path = os.path.join(app_dir, current_exe_name)
                                 bat_path = os.path.join(app_dir, "update_installer.bat")
+                                
+                                # Loop in the batch file until the old exe is fully unlocked/deleted and the new one is moved
                                 with open(bat_path, "w") as f:
                                     f.write(f"""@echo off
-timeout /t 1 /nobreak > nul
-del /f /q "{current_exe_name}"
-rename "AggieJobNotifier_new.exe" "{current_exe_name}"
-start "" "{current_exe_name}"
+:loop
+del /f /q "{current_exe_path}"
+if exist "{current_exe_path}" (
+    timeout /t 1 /nobreak > nul
+    goto loop
+)
+:move_loop
+move /y "{new_exe_path}" "{current_exe_path}"
+if not exist "{current_exe_path}" (
+    timeout /t 1 /nobreak > nul
+    goto move_loop
+)
+start "" "{current_exe_path}"
 del "%~f0"
 """)
                                 subprocess.Popen([bat_path], shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
