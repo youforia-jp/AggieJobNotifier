@@ -359,7 +359,7 @@ class App(ctk.CTk):
             if getattr(sys, "frozen", False):
                 import playwright._impl._driver
                 driver_executable, driver_cli = playwright._impl._driver.compute_driver_executable()
-                cmd = [driver_executable, *driver_cli, "install", "chromium"]
+                cmd = [driver_executable, driver_cli, "install", "chromium"]
             else:
                 cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
 
