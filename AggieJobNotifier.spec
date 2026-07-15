@@ -1,11 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
+import sys, os, glob
 
 datas = [('icon.ico', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('playwright')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# Explicitly bundle python3XX.dll and vcruntime DLLs so the exe works
+# on any machine without Python installed (fixes 'Failed to load Python DLL').
+_python_dir = os.path.dirname(sys.executable)
+for _dll in glob.glob(os.path.join(_python_dir, 'python3*.dll')):
+    binaries.append((_dll, '.'))
+for _dll in glob.glob(os.path.join(_python_dir, 'vcruntime*.dll')):
+    binaries.append((_dll, '.'))
 
 
 a = Analysis(
