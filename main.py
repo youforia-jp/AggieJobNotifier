@@ -841,6 +841,21 @@ def load_or_create_context(
         browser.close()
         raise
 
+    # Wait until we are actually inside the authenticated app before saving session.
+    # The login flow sometimes lands on /students/?signin_tab=0 (Symplicity's own
+    # sign-in page) before the full redirect completes — saving there produces an
+    # unauthenticated cookie jar.  Wait up to 30 s for /students/app to appear.
+    log.info("Waiting for authenticated app redirect before saving session …")
+    try:
+        page.wait_for_url(f"{config.BASE_URL}/students/app/**", timeout=30_000)
+        log.info("Confirmed authenticated app URL: %s", page.url)
+    except PlaywrightTimeoutError:
+        log.warning(
+            "Did not reach /students/app in time (current URL: %s). "
+            "Session may be incomplete — you may need to run --login again.",
+            page.url,
+        )
+
     # Save session state for future headless runs
     context.storage_state(path=str(session_path))
     log.info("Session saved to %s", session_path)
@@ -954,11 +969,12 @@ def scrape_jobs(context: BrowserContext, keywords: list[str], debug: bool = Fals
                 page.screenshot(path="debug_after_nav.png")
                 log.info("Debug screenshot: debug_after_nav.png  (URL: %s)", page.url)
 
-            # Detect session expiry — we should NOT be on the CAS or any login page
+            # Detect session expiry — we should NOT be on the CAS or any login page, and we MUST be inside the app
             current_url = page.url
             on_symplicity = config.BASE_URL.replace("https://", "") in current_url
             on_cas = any(x in current_url for x in ("cas.tamu.edu", "sso.tamu.edu", "login", "signin"))
-            if on_cas or not on_symplicity:
+            on_app = "/students/app" in current_url
+            if on_cas or not on_symplicity or not on_app:
                 log.warning("Session appears expired (redirected to: %s).", current_url)
                 page.close()
                 raise SessionExpiredError("Symplicity session is expired — re-run with --login.")
