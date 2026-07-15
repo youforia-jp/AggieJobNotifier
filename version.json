@@ -1,0 +1,4 @@
+{
+  "version": "1.1.0",
+  "release_notes": "Added LoginFailedError handling and session-expiration alerts to Discord."
+}

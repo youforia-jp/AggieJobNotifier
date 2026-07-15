@@ -124,6 +124,9 @@ class App(ctk.CTk):
         # Auto-install playwright on startup (non-blocking)
         threading.Thread(target=self._auto_install_playwright, daemon=True).start()
 
+        # Check for updates on startup (non-blocking)
+        threading.Thread(target=self._check_for_updates, daemon=True).start()
+
     # ------------------------------------------------------------------
     # Sidebar (centered, scrollable)
     # ------------------------------------------------------------------
@@ -389,6 +392,78 @@ class App(ctk.CTk):
                 )
         except Exception as exc:
             self._main.log.warning("Could not auto-install Playwright: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Auto-updater check
+    # ------------------------------------------------------------------
+    def _check_for_updates(self):
+        """Check for updates on GitHub and prompt the user to install if found."""
+        current_version = "1.0.0"
+        version_url = "https://raw.githubusercontent.com/youforia-jp/AggieJobNotifier/main/version.json"
+        exe_url = "https://github.com/youforia-jp/AggieJobNotifier/raw/main/AggieJobNotifier.exe"
+        
+        try:
+            import requests
+            response = requests.get(version_url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                remote_version = data.get("version", "1.0.0")
+                release_notes = data.get("release_notes", "")
+                
+                # Simple version tuple comparison
+                def parse_ver(v):
+                    return tuple(map(int, v.split(".")))
+                
+                if parse_ver(remote_version) > parse_ver(current_version):
+                    import tkinter.messagebox as messagebox
+                    msg = (
+                        f"A new version (v{remote_version}) is available!\n\n"
+                        f"Release Notes:\n{release_notes}\n\n"
+                        f"Would you like to download and install it now?"
+                    )
+                    if messagebox.askyesno("Update Available", msg):
+                        self.log_box.after(0, self._set_status, "Downloading update...")
+                        self._main.log.info("Downloading updated executable from GitHub...")
+                        
+                        # Download the new exe
+                        exe_response = requests.get(exe_url, stream=True, timeout=30)
+                        if exe_response.status_code == 200:
+                            # Write to a temporary filename next to the current exe
+                            if getattr(sys, "frozen", False):
+                                app_dir = os.path.dirname(sys.executable)
+                                current_exe_name = os.path.basename(sys.executable)
+                            else:
+                                app_dir = _base_dir
+                                current_exe_name = "AggieJobNotifier.exe"
+                                
+                            new_exe_path = os.path.join(app_dir, "AggieJobNotifier_new.exe")
+                            with open(new_exe_path, "wb") as f:
+                                for chunk in exe_response.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                                    
+                            self._main.log.info("Download complete. Launching updater...")
+                            
+                            # If running as built exe, trigger the batch-file replacement handoff
+                            if getattr(sys, "frozen", False):
+                                bat_path = os.path.join(app_dir, "update_installer.bat")
+                                with open(bat_path, "w") as f:
+                                    f.write(f"""@echo off
+timeout /t 1 /nobreak > nul
+del /f /q "{current_exe_name}"
+rename "AggieJobNotifier_new.exe" "{current_exe_name}"
+start "" "{current_exe_name}"
+del "%~f0"
+""")
+                                subprocess.Popen([bat_path], shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                                self.quit()
+                                sys.exit(0)
+                            else:
+                                self._main.log.info("[Source Run] Simulated update finished. In frozen build, the app would restart now.")
+                                messagebox.showinfo("Update Complete", "Download simulated successfully! (Restart skipped since you are running from source)")
+                        else:
+                            self._main.log.error("Failed to download the update binary.")
+        except Exception as e:
+            logging.getLogger("main").warning("Update check failed: %s", e)
 
     # ------------------------------------------------------------------
     # Save settings
