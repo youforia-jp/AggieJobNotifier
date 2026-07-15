@@ -850,10 +850,18 @@ def load_or_create_context(
         page.wait_for_url(f"{config.BASE_URL}/students/app/**", timeout=30_000)
         log.info("Confirmed authenticated app URL: %s", page.url)
     except PlaywrightTimeoutError:
-        log.warning(
-            "Did not reach /students/app in time (current URL: %s). "
-            "Session may be incomplete — you may need to run --login again.",
-            page.url,
+        current_url = page.url
+        log.error(
+            "Login did NOT complete — still on '%s' after 30s. "
+            "Duo MFA likely blocked headless re-login. Manual --login required.",
+            current_url,
+        )
+        page.close()
+        context.close()
+        browser.close()
+        raise LoginFailedError(
+            f"Auto re-login failed (stuck at {current_url}). "
+            "Please restart the bot with --login to approve Duo MFA."
         )
 
     # Save session state for future headless runs
@@ -895,7 +903,7 @@ def build_search_url(base_url: str, keyword: str) -> str:
     """
     params = []
     if keyword:
-        params.append(f"keywords={quote(keyword)}")
+        params.append(("keywords", keyword))
         
     filters = getattr(config, "FILTERS", {})
     for key, val in filters.items():
@@ -903,11 +911,11 @@ def build_search_url(base_url: str, keyword: str) -> str:
             continue
         if isinstance(val, list):
             for item in val:
-                params.append(f"{key}[]={quote(str(item))}")
+                params.append((f"{key}[]", str(item)))
         else:
-            params.append(f"{key}={quote(str(val))}")
+            params.append((key, str(val)))
             
-    query_string = "&".join(params)
+    query_string = urlencode(params)
     return f"{base_url}?{query_string}" if query_string else base_url
 
 
@@ -1075,6 +1083,10 @@ class SessionExpiredError(Exception):
     """Raised when Playwright detects the saved session is no longer valid."""
 
 
+class LoginFailedError(Exception):
+    """Raised when an automatic re-login attempt fails (e.g., Duo MFA blocked it)."""
+
+
 # ===========================================================================
 # Main pipeline
 # ===========================================================================
@@ -1090,7 +1102,26 @@ def _execute_pipeline(state: StateManager, keywords: list[str], force_login: boo
         except SessionExpiredError:
             log.info("Session expired — retrying with fresh login.")
             Path(config.SESSION_FILE).unlink(missing_ok=True)
-            browser, context = load_or_create_context(playwright, force_login=True, debug=debug)
+            try:
+                browser, context = load_or_create_context(playwright, force_login=True, debug=debug)
+            except LoginFailedError as lfe:
+                log.error("Auto re-login failed: %s", lfe)
+                send_discord_error(
+                    f"⚠️ **Session expired & auto re-login failed** (Duo MFA blocked headless login).\n\n"
+                    f"Please **restart the bot with the Login button** (or run `python main.py --login`) "
+                    f"to complete Duo 2FA and refresh the session.\n\nScraper is pausing until you do."
+                )
+                Path(config.SESSION_FILE).unlink(missing_ok=True)
+                raise  # re-raise so the continuous loop sees it
+        except LoginFailedError as lfe:
+            log.error("Login failed: %s", lfe)
+            send_discord_error(
+                f"⚠️ **Auto re-login failed** (Duo MFA blocked headless login).\n\n"
+                f"Please **restart the bot with the Login button** (or run `python main.py --login`) "
+                f"to complete Duo 2FA and refresh the session.\n\nScraper is pausing until you do."
+            )
+            Path(config.SESSION_FILE).unlink(missing_ok=True)
+            raise
         except Exception as exc:
             log.error("Could not create browser context: %s", exc)
             send_discord_error(f"Scraper startup error: {exc}")
@@ -1109,7 +1140,17 @@ def _execute_pipeline(state: StateManager, keywords: list[str], force_login: boo
             except Exception:
                 pass
             Path(config.SESSION_FILE).unlink(missing_ok=True)
-            browser, context = load_or_create_context(playwright, force_login=True, debug=debug)
+            try:
+                browser, context = load_or_create_context(playwright, force_login=True, debug=debug)
+            except LoginFailedError as lfe:
+                log.error("Auto re-login failed during scrape retry: %s", lfe)
+                send_discord_error(
+                    f"⚠️ **Session expired & auto re-login failed** (Duo MFA blocked headless login).\n\n"
+                    f"Please **restart the bot with the Login button** (or run `python main.py --login`) "
+                    f"to complete Duo 2FA and refresh the session.\n\nScraper is pausing until you do."
+                )
+                Path(config.SESSION_FILE).unlink(missing_ok=True)
+                return
             jobs = scrape_jobs(context, keywords=keywords, debug=debug)
         except Exception as exc:
             log.error("Scraping failed: %s", exc, exc_info=True)
@@ -1217,6 +1258,10 @@ def run(force_login: bool = False, no_filter: bool = False, debug: bool = False,
             
             _execute_pipeline(state, keywords, loop_force_login, debug, is_first_run=first_run)
             first_run = False
+        except LoginFailedError as exc:
+            log.error("Login failed — stopping continuous loop until manual re-login: %s", exc)
+            # Don't keep hammering every hour with a broken session
+            break
         except Exception as exc:
             log.error("Unhandled error in pipeline loop: %s", exc)
             send_discord_error(f"Continuous mode pipeline execution failed: {exc}")
