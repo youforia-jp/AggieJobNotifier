@@ -910,8 +910,7 @@ def build_search_url(base_url: str, keyword: str) -> str:
         if not val:
             continue
         if isinstance(val, list):
-            for item in val:
-                params.append((f"{key}[]", str(item)))
+            params.append((key, ",".join(str(item) for item in val)))
         else:
             params.append((key, str(val)))
             
