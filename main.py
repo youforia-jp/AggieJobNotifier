@@ -821,10 +821,11 @@ def load_or_create_context(
         context = browser.new_context(storage_state=str(session_path), **context_args)
         return browser, context
 
-    # No saved session — launch headed locally so the user can interact with Duo, headless on VPS
-    log.info("No saved session — launching browser for initial login (headless=%s).", HEADLESS)
+    # No saved session — launch headed on Windows for Duo interaction, headless on Linux VPS
+    login_headless = HEADLESS if sys.platform != "win32" else False
+    log.info("No saved session — launching browser for initial login (headless=%s).", login_headless)
     browser = playwright.chromium.launch(
-        headless=HEADLESS,
+        headless=login_headless,
         # Slow down interactions slightly so Chromium renders before we fill fields
         slow_mo=80,
     )
