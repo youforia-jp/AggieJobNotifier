@@ -805,28 +805,30 @@ def load_or_create_context(
     """
     session_path = Path(config.SESSION_FILE)
 
-    if not force_login and session_path.exists():
-        log.info("Loading saved session from %s", session_path)
-        browser = playwright.chromium.launch(headless=HEADLESS)
-        context = browser.new_context(storage_state=str(session_path))
-        return browser, context
-
-    # No saved session — always launch headed so the user can interact with Duo
-    log.info("No saved session — launching HEADED browser for initial login.")
-    browser = playwright.chromium.launch(
-        headless=False,
-        # Slow down interactions slightly so Chromium renders before we fill fields
-        slow_mo=80,
-    )
-    context = browser.new_context(
-        # Use a real-looking viewport and user-agent to avoid bot detection
-        viewport={"width": 1280, "height": 800},
-        user_agent=(
+    # Common context arguments to maintain consistency across headed/headless sessions
+    context_args = {
+        "viewport": {"width": 1280, "height": 800},
+        "user_agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/125.0.0.0 Safari/537.36"
-        ),
+        )
+    }
+
+    if not force_login and session_path.exists():
+        log.info("Loading saved session from %s", session_path)
+        browser = playwright.chromium.launch(headless=HEADLESS)
+        context = browser.new_context(storage_state=str(session_path), **context_args)
+        return browser, context
+
+    # No saved session — launch headed locally so the user can interact with Duo, headless on VPS
+    log.info("No saved session — launching browser for initial login (headless=%s).", HEADLESS)
+    browser = playwright.chromium.launch(
+        headless=HEADLESS,
+        # Slow down interactions slightly so Chromium renders before we fill fields
+        slow_mo=80,
     )
+    context = browser.new_context(**context_args)
     page = context.new_page()
 
     try:
@@ -875,7 +877,7 @@ def load_or_create_context(
         context.close()
         browser.close()
         browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(storage_state=str(session_path))
+        context = browser.new_context(storage_state=str(session_path), **context_args)
 
     return browser, context
 
@@ -1164,16 +1166,23 @@ def _execute_pipeline(state: StateManager, keywords: list[str], force_login: boo
                 except Exception:
                     pass
             return
-        else:
+
+        # Save session state for future headless runs if scrape was successful
+        try:
+            context.storage_state(path=str(config.SESSION_FILE))
+            log.info("Saved updated session state to %s", config.SESSION_FILE)
+        except Exception as e:
+            log.error("Could not save updated session state: %s", e)
+
+        try:
+            context.close()
+        except Exception:
+            pass
+        if browser:
             try:
-                context.close()
+                browser.close()
             except Exception:
                 pass
-            if browser:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
 
     # 1. Apply keyword filter
     if keywords:
@@ -1239,6 +1248,29 @@ def _execute_pipeline(state: StateManager, keywords: list[str], force_login: boo
     log.info("Pipeline complete.")
 
 
+def keep_alive_session() -> None:
+    """Load the saved session, navigate to the dashboard, and save updated state to reset inactivity timeout."""
+    session_path = Path(config.SESSION_FILE)
+    if not session_path.exists():
+        return
+    log.info("Running session keep-alive request...")
+    with sync_playwright() as playwright:
+        try:
+            browser, context = load_or_create_context(playwright, force_login=False, debug=False)
+            page = context.new_page()
+            page.goto(config.BASE_URL, timeout=config.NAVIGATION_TIMEOUT)
+            page.wait_for_timeout(2000)
+            
+            # Save updated cookies/state
+            context.storage_state(path=str(session_path))
+            log.info("Keep-alive successful: updated session state saved.")
+            page.close()
+            context.close()
+            browser.close()
+        except Exception as e:
+            log.warning("Session keep-alive failed: %s", e)
+
+
 def run(force_login: bool = False, no_filter: bool = False, debug: bool = False, continuous: bool = False) -> None:
     reload_config()
     state = StateManager()
@@ -1267,10 +1299,18 @@ def run(force_login: bool = False, no_filter: bool = False, debug: bool = False,
             
         log.info("Sleeping for %d minutes before next check...", RUN_INTERVAL_MINS)
         
-        # Use event wait instead of sleep so the GUI can interrupt it
-        if stop_event.wait(RUN_INTERVAL_MINS * 60):
-            log.info("Stop event received, terminating continuous loop.")
-            break
+        # Sleep in chunks of 15 minutes and run keep-alive to prevent session timeout
+        sleep_remaining = RUN_INTERVAL_MINS * 60
+        keep_alive_interval = 15 * 60  # 15 minutes
+        while sleep_remaining > 0 and not stop_event.is_set():
+            wait_time = min(sleep_remaining, keep_alive_interval)
+            log.info("Sleeping for %d seconds...", wait_time)
+            if stop_event.wait(wait_time):
+                log.info("Stop event received, terminating continuous loop.")
+                break
+            sleep_remaining -= wait_time
+            if sleep_remaining > 0 and not stop_event.is_set():
+                keep_alive_session()
 
 
 # ===========================================================================
