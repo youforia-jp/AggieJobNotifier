@@ -1,4 +1,4 @@
 {
-  "version": "1.2.0",
-  "release_notes": "Disabled debug console output. Auto-updater enabled."
+  "version": "1.2.1",
+  "release_notes": "Fix session expiry, add keep-alive (every 15 min), and support headless login on VPS."
 }

@@ -398,7 +398,7 @@ class App(ctk.CTk):
     # ------------------------------------------------------------------
     def _check_for_updates(self):
         """Check for updates on GitHub and prompt the user to install if found."""
-        current_version = "1.2.0"
+        current_version = "1.2.1"
         version_url = "https://raw.githubusercontent.com/youforia-jp/AggieJobNotifier/main/version.json"
         exe_url = "https://github.com/youforia-jp/AggieJobNotifier/raw/main/AggieJobNotifier.exe"
         
